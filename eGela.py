@@ -20,7 +20,23 @@ class eGela:
         self._root = root
         self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
+    def _update_cookie(self, response):
+        """Extrae y actualiza la cookie MoodleSessionegela si el servidor la envía."""
+        set_cookie = response.headers.get('Set-Cookie', '')
+        if set_cookie:
+            match_cookie = re.search(r'(MoodleSessionegela=[^;]+)', set_cookie)
+            if match_cookie:
+                self._cookie = match_cookie.group(1)
+                self.headers['Cookie'] = self._cookie
+
     def check_credentials(self, username, password, event=None):
+        # --- FIX CRUCIAL DE TKINTER ---
+        # Extraemos el texto real si las variables son objetos de Tkinter
+        if hasattr(username, 'get'):
+            username = username.get()
+        if hasattr(password, 'get'):
+            password = password.get()
+
         popup, progress_var, progress_bar = helper.progress("check_credentials", "Logging into eGela...")
         progress = 0
         progress_var.set(progress)
@@ -29,12 +45,7 @@ class eGela:
         print("##### 1. PETICION #####")
         url_login = "https://egela.ehu.eus/login/index.php"
         r1 = requests.get(url_login, headers=self.headers, allow_redirects=False)
-
-        # Extraer cookie y token
-        match_cookie = re.search(r'(MoodleSessionegela=[^;]+)', r1.headers.get('Set-Cookie', ''))
-        if match_cookie:
-            self._cookie = match_cookie.group(1)
-            self.headers['Cookie'] = self._cookie
+        self._update_cookie(r1)
 
         soup = BeautifulSoup(r1.text, 'html.parser')
         logintoken = soup.find('input', {'name': 'logintoken'})['value']
@@ -49,15 +60,11 @@ class eGela:
         self.headers['Content-Type'] = 'application/x-www-form-urlencoded'
 
         r2 = requests.post(url_login, data=payload, headers=self.headers, allow_redirects=False)
-
-        # Actualizar cookie
-        match_cookie = re.search(r'(MoodleSessionegela=[^;]+)', r2.headers.get('Set-Cookie', ''))
-        if match_cookie:
-            self._cookie = match_cookie.group(1)
-            self.headers['Cookie'] = self._cookie
-
+        self._update_cookie(r2)
         del self.headers['Content-Type']
-        url_redirect_1 = r2.headers.get('Location')
+
+        # Fallback en caso de credenciales incorrectas (Moodle devuelve 200 en vez de 303)
+        url_redirect_1 = r2.headers.get('Location') or "https://egela.ehu.eus/my/"
 
         progress = 50
         progress_var.set(progress)
@@ -66,7 +73,9 @@ class eGela:
 
         print("\n##### 3. PETICION #####")
         r3 = requests.get(url_redirect_1, headers=self.headers, allow_redirects=False)
-        url_redirect_2 = r3.headers.get('Location')
+        self._update_cookie(r3)
+
+        url_redirect_2 = r3.headers.get('Location') or "https://egela.ehu.eus/my/"
 
         progress = 75
         progress_var.set(progress)
@@ -74,7 +83,7 @@ class eGela:
         time.sleep(1)
 
         print("\n##### 4. PETICION #####")
-        r4 = requests.get(url_redirect_2, headers=self.headers, allow_redirects=False)
+        r4 = requests.get(url_redirect_2, headers=self.headers, allow_redirects=True)
 
         progress = 100
         progress_var.set(progress)
@@ -86,6 +95,7 @@ class eGela:
         COMPROBACION_DE_LOG_IN = "user/profile.php" in r4.text
 
         if COMPROBACION_DE_LOG_IN:
+            print("\t[OK] Autenticación correcta en eGela.")
             self._login = 1
             # Buscamos la URL de Sistemas Web en el dashboard
             soup_main = BeautifulSoup(r4.text, 'html.parser')
@@ -95,6 +105,7 @@ class eGela:
                     break
             self._root.destroy()
         else:
+            print("\t[ERROR] Fallo de credenciales.")
             messagebox.showinfo("Alert Message", "Login incorrect!")
 
     def get_pdf_refs(self):
@@ -155,6 +166,7 @@ class eGela:
         # Hacemos la petición siguiendo posibles redirecciones manualmente para arrastrar la cookie
         r_pdf = requests.get(url, headers=self.headers, allow_redirects=False)
         while r_pdf.status_code in [301, 302, 303]:
+            self._update_cookie(r_pdf)
             siguiente_url = r_pdf.headers.get('Location')
             r_pdf = requests.get(siguiente_url, headers=self.headers, allow_redirects=False)
 
