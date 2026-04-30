@@ -111,6 +111,23 @@ def create_folder():
     dropbox._root = popup
 
 
+def share_files():
+    # Comprobamos que haya algo seleccionado
+    if not selected_items2:
+        return
+
+    for each in selected_items2:
+        # Construimos la ruta correcta del archivo en Dropbox
+        if dropbox._path == "/":
+            path = "/" + dropbox._files[each]['name']
+        else:
+            path = dropbox._path + "/" + dropbox._files[each]['name']
+
+        print("Compartiendo: " + path)
+        # Llamamos a nuestro nuevo método de la mejora extra
+        dropbox.create_shared_link(path)
+
+
 ##########################################################################################################
 
 def check_credentials(event= None):
@@ -248,8 +265,13 @@ messages_frame2.grid(row=1, column=2, ipadx=10, ipady=10, padx=2, pady=2)
 frame2 = tk.Frame(newroot)
 button2 = tk.Button(frame2, borderwidth=4,  background="#C6185C",fg="white", text="Delete", width=10, pady=8, command=delete_files)
 button2.pack(padx=2, pady=2)
+
+button4 = tk.Button(frame2, borderwidth=4, background="#FF9800", fg="white", text="Share", width=10, pady=8, command=share_files)
+button4.pack(padx=2, pady=2)
+
 button3 = tk.Button(frame2, borderwidth=4, background="#7C86FF",fg="white", text="Create folder", width=10, pady=8, command=create_folder)
 button3.pack(padx=2, pady=2)
+
 frame2.grid(row=1, column=3,  ipadx=10, ipady=10)
 
 for each in pdfs:
