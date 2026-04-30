@@ -4,12 +4,14 @@ import webbrowser
 from socket import AF_INET, socket, SOCK_STREAM
 import json
 import helper
+from tkinter import messagebox
 
-app_key = ''
-app_secret = ''
+app_key = 'uhg5h41oo6xo44m'
+app_secret = '09jxbyi09dg3ujq'
 server_addr = "localhost"
 server_port = 8070
 redirect_uri = "http://" + server_addr + ":" + str(server_port)
+
 
 class Dropbox:
     _access_token = ""
@@ -22,78 +24,122 @@ class Dropbox:
         self._root = root
 
     def local_server(self):
-        # por el puerto 8090 esta escuchando el servidor que generamos
         server_socket = socket(AF_INET, SOCK_STREAM)
         server_socket.bind((server_addr, server_port))
         server_socket.listen(1)
         print("\tLocal server listening on port " + str(server_port))
 
-        # recibe la redireccio 302 del navegador
         client_connection, client_address = server_socket.accept()
         peticion = client_connection.recv(1024)
         print("\tRequest from the browser received at local server:")
-        print (peticion)
 
-        # buscar en solicitud el "auth_code"
-        primera_linea =peticion.decode('UTF8').split('\n')[0]
+        primera_linea = peticion.decode('UTF8').split('\n')[0]
         aux_auth_code = primera_linea.split(' ')[1]
-        auth_code = aux_auth_code[7:].split('&')[0]
-        print ("\tauth_code: " + auth_code)
+        auth_code = aux_auth_code.split('code=')[1].split('&')[0]
+        print("\tauth_code: " + auth_code)
 
-        # devolver una respuesta al usuario
         http_response = "HTTP/1.1 200 OK\r\n\r\n" \
                         "<html>" \
-                        "<head><title>Proba</title></head>" \
-                        "<body>The authentication flow has completed. Close this window.</body>" \
+                        "<head><title>Dropbox Auth</title></head>" \
+                        "<body>The authentication flow has completed. You can close this window.</body>" \
                         "</html>"
-        client_connection.sendall(http_response)
+        client_connection.sendall(http_response.encode('utf-8'))
         client_connection.close()
         server_socket.close()
 
         return auth_code
 
     def do_oauth(self):
-        #############################################
-        # RELLENAR CON CODIGO DE LAS PETICIONES HTTP
-        # Y PROCESAMIENTO DE LAS RESPUESTAS HTTP
-        # PARA LA OBTENCION DEL ACCESS TOKEN
-        #############################################
+        print("\nStep 1.- Send authorization request to Dropbox")
+        auth_url = f"https://www.dropbox.com/oauth2/authorize?client_id={app_key}&redirect_uri={redirect_uri}&response_type=code"
+        webbrowser.open_new(auth_url)
+
+        print("\nStep 2.- Wait for auth code")
+        auth_code = self.local_server()
+
+        print("\nStep 3.- Exchange code for token")
+        token_url = "https://api.dropboxapi.com/oauth2/token"
+        datos = {
+            'code': auth_code,
+            'grant_type': 'authorization_code',
+            'client_id': app_key,
+            'client_secret': app_secret,
+            'redirect_uri': redirect_uri
+        }
+
+        respuesta = requests.post(token_url, data=datos)
+        contenido_json = json.loads(respuesta.text)
+
+        if 'access_token' in contenido_json:
+            self._access_token = contenido_json['access_token']
+            print("\tAccess token obtained successfully.")
+        else:
+            print("\tError obtaining token:", contenido_json)
 
         self._root.destroy()
+
+    def get_headers(self, is_json=True):
+        headers = {'Authorization': 'Bearer ' + self._access_token}
+        if is_json:
+            headers['Content-Type'] = 'application/json'
+        return headers
 
     def list_folder(self, msg_listbox):
         print("/list_folder")
         uri = 'https://api.dropboxapi.com/2/files/list_folder'
-        # https://www.dropbox.com/developers/documentation/http/documentation#files-list_folder
-        #############################################
-        # RELLENAR CON CODIGO DE LA PETICION HTTP
-        # Y PROCESAMIENTO DE LA RESPUESTA HTTP
-        #############################################
+
+        # Dropbox requiere "" (string vacío) para la ruta raíz, no "/"
+        api_path = "" if self._path == "/" else self._path
+        data = {"path": api_path}
+
+        res = requests.post(uri, headers=self.get_headers(), json=data)
+        contenido_json = json.loads(res.text)
 
         self._files = helper.update_listbox2(msg_listbox, self._path, contenido_json)
 
     def transfer_file(self, file_path, file_data):
-        print("/upload")
+        print(f"/upload: {file_path}")
         uri = 'https://content.dropboxapi.com/2/files/upload'
-        # https://www.dropbox.com/developers/documentation/http/documentation#files-upload
-        #############################################
-        # RELLENAR CON CODIGO DE LA PETICION HTTP
-        # Y PROCESAMIENTO DE LA RESPUESTA HTTP
-        #############################################
+
+        headers = self.get_headers(is_json=False)
+        headers['Content-Type'] = 'application/octet-stream'
+
+        api_arg = {
+            "path": file_path,
+            "mode": "add",
+            "autorename": True,
+            "mute": False
+        }
+        headers['Dropbox-API-Arg'] = json.dumps(api_arg)
+
+        requests.post(uri, headers=headers, data=file_data)
 
     def delete_file(self, file_path):
-        print("/delete_file")
+        print(f"/delete_v2: {file_path}")
         uri = 'https://api.dropboxapi.com/2/files/delete_v2'
-        # https://www.dropbox.com/developers/documentation/http/documentation#files-delete
-        #############################################
-        # RELLENAR CON CODIGO DE LA PETICION HTTP
-        # Y PROCESAMIENTO DE LA RESPUESTA HTTP
-        #############################################
+        data = {"path": file_path}
+        requests.post(uri, headers=self.get_headers(), json=data)
 
     def create_folder(self, path):
-        print("/create_folder")
-       # https://www.dropbox.com/developers/documentation/http/documentation#files-create_folder
-        #############################################
-        # RELLENAR CON CODIGO DE LA PETICION HTTP
-        # Y PROCESAMIENTO DE LA RESPUESTA HTTP
-        #############################################
+        print(f"/create_folder_v2: {path}")
+        uri = 'https://api.dropboxapi.com/2/files/create_folder_v2'
+        data = {"path": path}
+        requests.post(uri, headers=self.get_headers(), json=data)
+
+    # =========================================================
+    # MEJORA EXTRA (20%): Generar enlace para compartir un archivo
+    # =========================================================
+    def create_shared_link(self, file_path):
+        print(f"/create_shared_link_with_settings: {file_path}")
+        uri = 'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings'
+        data = {"path": file_path}
+
+        res = requests.post(uri, headers=self.get_headers(), json=data)
+        respuesta_json = json.loads(res.text)
+
+        if res.status_code == 200:
+            link = respuesta_json.get('url')
+            print(f"¡Link compartido generado!: {link}")
+            messagebox.showinfo("Enlace Compartido", f"Enlace generado con éxito:\n\n{link}")
+        else:
+            print("Error generando link:", respuesta_json)
