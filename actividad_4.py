@@ -1,5 +1,6 @@
 # -*- coding: UTF-8 -*-
 import tkinter as tk
+from tkinter import messagebox
 import os
 import eGela
 import Dropbox
@@ -27,6 +28,11 @@ def make_listbox(messages_frame):
     return msg_listbox
 
 def transfer_files():
+    # FIX: Comprobar que haya algo seleccionado para no dar error de NoneType
+    if not selected_items1:
+        messagebox.showwarning("Atención", "Selecciona al menos un archivo de eGela para transferir.")
+        return
+
     popup, progress_var, progress_bar = helper.progress("transfer_file", "Transfering files...")
     progress = 0
     progress_var.set(progress)
@@ -59,7 +65,13 @@ def transfer_files():
     dropbox.list_folder(msg_listbox2)
     msg_listbox2.yview(tk.END)
 
+
 def delete_files():
+    # FIX: Comprobar que haya algo seleccionado para no dar error de NoneType
+    if not selected_items2:
+        messagebox.showwarning("Atención", "Selecciona al menos un archivo o carpeta de Dropbox para eliminar.")
+        return
+
     popup, progress_var, progress_bar = helper.progress("delete_file", "Deleting files...")
     progress = 0
     progress_var.set(progress)
@@ -67,11 +79,22 @@ def delete_files():
     progress_step = float(100.0 / len(selected_items2))
 
     for each in selected_items2:
+        # Prevenimos que el usuario intente borrar el botón de "volver atrás" (..)
+        if dropbox._path != "/" and each == 0:
+            print("No se puede borrar el directorio padre (..)")
+            progress += progress_step
+            progress_var.set(progress)
+            progress_bar.update()
+            continue
+
+        selected_file = dropbox._files[each]
+
         if dropbox._path == "/":
-            path = "/" + dropbox._files[each]['name']
+            path = "/" + selected_file['name']
         else:
-            path = dropbox._path + "/" + dropbox._files[each]['name']
-            print (path)
+            path = dropbox._path + "/" + selected_file['name']
+
+        print(f"Borrando: {path}")
         dropbox.delete_file(path)
 
         progress += progress_step
@@ -104,7 +127,10 @@ def create_folder():
     label = tk.Label(login_frame, text="Create folder")
     label.pack(side=tk.TOP)
     entry_field = tk.Entry(login_frame, width=35)
-    entry_field.bind("<Return>", name_folder)
+
+    # FIX: Usamos un lambda para atrapar el 'event' y enviar solo el texto real
+    entry_field.bind("<Return>", lambda event: name_folder(entry_field.get()))
+
     entry_field.pack(side=tk.TOP)
     send_button = tk.Button(login_frame, text="Send", command=lambda: name_folder(entry_field.get()))
     send_button.pack(side=tk.TOP)

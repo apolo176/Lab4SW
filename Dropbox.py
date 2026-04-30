@@ -85,16 +85,23 @@ class Dropbox:
         return headers
 
     def list_folder(self, msg_listbox):
-        print("/list_folder")
+        print(f"/list_folder (Ruta solicitada: '{self._path}')")
         uri = 'https://api.dropboxapi.com/2/files/list_folder'
 
         # Dropbox requiere "" (string vacío) para la ruta raíz, no "/"
         api_path = "" if self._path == "/" else self._path
         data = {"path": api_path}
 
-        res = requests.post(uri, headers=self.get_headers(), json=data)
-        contenido_json = json.loads(res.text)
+        # Usamos data=json.dumps() para evitar conflictos con nuestras cabeceras manuales
+        res = requests.post(uri, headers=self.get_headers(), data=json.dumps(data))
 
+        # Control de errores a prueba de balas
+        if res.status_code != 200:
+            print(f"\t[ERROR DROPBOX] Fallo al listar carpeta. Código: {res.status_code}")
+            print(f"\t[DETALLE]: {res.text}")
+            return
+
+        contenido_json = json.loads(res.text)
         self._files = helper.update_listbox2(msg_listbox, self._path, contenido_json)
 
     def transfer_file(self, file_path, file_data):
@@ -112,34 +119,54 @@ class Dropbox:
         }
         headers['Dropbox-API-Arg'] = json.dumps(api_arg)
 
-        requests.post(uri, headers=headers, data=file_data)
+        res = requests.post(uri, headers=headers, data=file_data)
+        if res.status_code != 200:
+            print(f"\t[ERROR DROPBOX] Fallo al subir archivo. Código: {res.status_code}")
+            print(f"\t[DETALLE]: {res.text}")
 
     def delete_file(self, file_path):
         print(f"/delete_v2: {file_path}")
         uri = 'https://api.dropboxapi.com/2/files/delete_v2'
         data = {"path": file_path}
-        requests.post(uri, headers=self.get_headers(), json=data)
+
+        res = requests.post(uri, headers=self.get_headers(), data=json.dumps(data))
+        if res.status_code != 200:
+            print(f"\t[ERROR DROPBOX] Fallo al borrar archivo. Código: {res.status_code}")
+            print(f"\t[DETALLE]: {res.text}")
 
     def create_folder(self, path):
         print(f"/create_folder_v2: {path}")
         uri = 'https://api.dropboxapi.com/2/files/create_folder_v2'
         data = {"path": path}
-        requests.post(uri, headers=self.get_headers(), json=data)
 
-    # =========================================================
-    # MEJORA EXTRA (20%): Generar enlace para compartir un archivo
-    # =========================================================
-    def create_shared_link(self, file_path):
-        print(f"/create_shared_link_with_settings: {file_path}")
-        uri = 'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings'
-        data = {"path": file_path}
+        res = requests.post(uri, headers=self.get_headers(), data=json.dumps(data))
+        if res.status_code != 200:
+            print(f"\t[ERROR DROPBOX] Fallo al crear carpeta. Código: {res.status_code}")
+            print(f"\t[DETALLE]: {res.text}")
 
-        res = requests.post(uri, headers=self.get_headers(), json=data)
-        respuesta_json = json.loads(res.text)
+        # =========================================================
+        # MEJORA EXTRA (20%): Generar enlace para compartir un archivo
+        # =========================================================
+        def create_shared_link(self, file_path):
+            print(f"/create_shared_link_with_settings: {file_path}")
+            uri = 'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings'
+            data = {"path": file_path}
 
-        if res.status_code == 200:
-            link = respuesta_json.get('url')
-            print(f"¡Link compartido generado!: {link}")
-            messagebox.showinfo("Enlace Compartido", f"Enlace generado con éxito:\n\n{link}")
-        else:
-            print("Error generando link:", respuesta_json)
+            res = requests.post(uri, headers=self.get_headers(), data=json.dumps(data))
+
+            if res.status_code == 200:
+                respuesta_json = json.loads(res.text)
+                link = respuesta_json.get('url')
+                print(f"\t¡Link compartido generado!: {link}")
+
+                # --- AÑADIR AL PORTAPAPELES ---
+                if self._root:
+                    self._root.clipboard_clear()
+                    self._root.clipboard_append(link)
+                    self._root.update()  # Asegura que se copie al sistema operativo
+
+                messagebox.showinfo("Enlace Compartido", f"Enlace generado y copiado al portapapeles:\n\n{link}")
+            else:
+                print(f"\t[ERROR DROPBOX] Fallo al generar enlace. Código: {res.status_code}")
+                print(f"\t[DETALLE]: {res.text}")
+                messagebox.showerror("Error", "No se pudo generar el enlace. Revisa la consola.")

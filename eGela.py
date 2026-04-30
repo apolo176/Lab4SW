@@ -116,32 +116,56 @@ class eGela:
 
         print("\n##### PETICION (Página principal de la asignatura en eGela) #####")
         r_curso = requests.get(self._curso, headers=self.headers)
+        self._update_cookie(r_curso)
 
-        print("\n##### Analisis del HTML... #####")
-        soup = BeautifulSoup(r_curso.text, 'html.parser')
+        print("\n##### Analisis del HTML (Buscando secciones/temas)... #####")
+        soup_asignatura = BeautifulSoup(r_curso.text, 'html.parser')
 
-        # Buscamos todos los recursos tipo archivo
-        recursos = soup.find_all('li', class_='modtype_resource')
+        # 1. Obtener los enlaces de todas las pestañas (temas)
+        temas = []
+        ul_tabs = soup_asignatura.find('ul', class_='format_onetopic-tabs')
+        if ul_tabs:
+            for li in ul_tabs.find_all('li', class_='nav-item'):
+                a_tag = li.find('a', class_='nav-link')
+                if a_tag and a_tag.get('href'):
+                    temas.append(a_tag.get('href'))
+        else:
+            # Si el curso no tuviera pestañas, procesamos solo la URL principal
+            temas.append(self._curso)
+
         pdf_links = []
 
-        for recurso in recursos:
-            a_tag = recurso.find('a')
-            if not a_tag: continue
+        # 2. Recorrer cada tema y extraer los PDFs
+        for i, url_tema in enumerate(temas):
+            print(f"\tExplorando tema {i + 1}/{len(temas)}...")
+            r_tema = requests.get(url_tema, headers=self.headers)
+            self._update_cookie(r_tema)
+            soup_tema = BeautifulSoup(r_tema.text, 'html.parser')
 
-            img = recurso.find('img', class_='activityicon')
-            nombre_span = recurso.find('span', class_='instancename')
+            recursos = soup_tema.find_all('li', class_='modtype_resource')
 
-            if not nombre_span: continue
-            nombre = nombre_span.text.replace('Archivo', '').strip()
+            for recurso in recursos:
+                a_tag = recurso.find('a')
+                if not a_tag: continue
 
-            # Filtramos si es un PDF (por icono o nombre)
-            if (img and 'pdf' in img.get('src', '').lower()) or '.pdf' in nombre.lower():
-                url = a_tag.get('href')
-                # Si no termina en .pdf, se lo añadimos para limpieza visual
-                if not nombre.lower().endswith('.pdf'):
-                    nombre += ".pdf"
-                pdf_links.append({'pdf_name': nombre, 'pdf_link': url})
+                img = recurso.find('img', class_='activityicon')
+                nombre_span = recurso.find('span', class_='instancename')
 
+                if not nombre_span: continue
+                nombre = nombre_span.text.replace('Archivo', '').strip()
+
+                # Filtramos si es un PDF (por icono o nombre)
+                if (img and 'pdf' in img.get('src', '').lower()) or '.pdf' in nombre.lower():
+                    url_pdf = a_tag.get('href')
+                    # Si no termina en .pdf, se lo añadimos para limpieza visual
+                    if not nombre.lower().endswith('.pdf'):
+                        nombre += ".pdf"
+
+                    # Evitar duplicados
+                    if not any(pdf['pdf_link'] == url_pdf for pdf in pdf_links):
+                        pdf_links.append({'pdf_name': nombre, 'pdf_link': url_pdf})
+
+        # 3. Actualizar la barra de progreso de la interfaz y guardar referencias
         progress_step = float(100.0 / max(len(pdf_links), 1))
 
         for pdf in pdf_links:
@@ -149,7 +173,8 @@ class eGela:
             progress += progress_step
             progress_var.set(progress)
             progress_bar.update()
-            time.sleep(0.1)
+            # Reducimos el tiempo de espera a 0.05 para que la barra avance más fluido
+            time.sleep(0.05)
 
         popup.destroy()
         return self._refs
