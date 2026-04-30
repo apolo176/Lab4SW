@@ -6,3 +6,7 @@ Por: Alex Isasi, Liviu Deleanu y Eder Torres
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
+Documentacion
+
+https://www.dropbox.com/developers/documentation/http/overview
