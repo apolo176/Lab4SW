@@ -199,16 +199,9 @@ class Dropbox:
             respuesta_json = json.loads(res.text)
             link = respuesta_json.get('url')
             print(f"\t[ÉXITO] Link generado: {link}")
-
-            # --- AÑADIR AL PORTAPAPELES ---
-            if self._root:
-                self._root.clipboard_clear()
-                self._root.clipboard_append(link)
-                self._root.update()  # Forzamos la actualización del portapapeles en el SO
-
-            messagebox.showinfo("Enlace Compartido", f"Enlace generado y copiado al portapapeles:\n\n{link}")
+            return link  # Devolvemos el enlace a la interfaz gráfica
 
         else:
             print(f"\t[ERROR] Fallo al generar enlace. Código: {res.status_code}")
             print(f"\t[DETALLE]: {res.text}")
-            messagebox.showerror("Error", "No se pudo generar el enlace. Revisa la consola.")
+            return None  # Devolvemos None si algo falla

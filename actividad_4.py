@@ -198,7 +198,19 @@ def share_files():
             path = dropbox._path + "/" + dropbox._files[each]['name']
 
         print(f"\t[COMPARTIR] Solicitando enlace público para: {path}")
-        dropbox.create_shared_link(path)
+
+        # Llamamos a la API y recogemos el enlace
+        link = dropbox.create_shared_link(path)
+
+        # Si la API nos ha devuelto un enlace válido, usamos 'newroot' para copiarlo
+        if link:
+            newroot.clipboard_clear()
+            newroot.clipboard_append(link)
+            newroot.update()  # Forzamos la actualización del portapapeles en el Sistema Operativo
+
+            messagebox.showinfo("Enlace Compartido", f"Enlace generado y copiado al portapapeles:\n\n{link}")
+        else:
+            messagebox.showerror("Error", "No se pudo generar el enlace. Revisa la consola.")
 
 
 ##########################################################################################################
