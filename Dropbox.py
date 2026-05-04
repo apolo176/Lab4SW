@@ -237,19 +237,27 @@ class Dropbox:
         print(f"[API DROPBOX] POST /create_shared_link_with_settings (Archivo: '{file_path}')")
         # Documentación de este endpoint: https://www.dropbox.com/developers/documentation/http/documentation#sharing-create_shared_link_with_settings
         uri = 'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings'
-        data = {"path": file_path}
 
         res = requests.post(uri, headers=self.get_headers(), data=json.dumps(data))
+        respuesta_json = json.loads(res.text)
 
+        # Caso 1: El enlace se crea por primera vez (200 OK)
         if res.status_code == 200:
-            respuesta_json = json.loads(res.text)
-            # Extraemos la propiedad 'url' que devuelve la API con el enlace público acortado
             link = respuesta_json.get('url')
+            # Extraemos la propiedad 'url' que devuelve la API con el enlace público acortado
             print(f"\t[ÉXITO] Link generado: {link}")
             return link  # Devolvemos el enlace a la interfaz gráfica (actividad_4.py) para que lo meta al portapapeles
 
+        # Caso 2: El enlace ya existía (409 Conflict). Lo extraemos del JSON del error.
+        elif res.status_code == 409 and 'shared_link_already_exists' in respuesta_json.get('error_summary', ''):
+            # Navegamos por el diccionario anidado del JSON para sacar la URL
+            link = respuesta_json['error']['shared_link_already_exists']['metadata']['url']
+            print(f"\t[INFO] El enlace ya existía. Recuperado: {link}")
+            return link  # Devolvemos el enlace a la interfaz gráfica (actividad_4.py) para que lo meta al portapapeles
+
+        # Caso 3: Un error real y distinto (400, 401, 500...)
         else:
             # Gestión de errores específicos, como intentar compartir una carpeta (lo cual requiere settings extra que no hemos configurado)
             print(f"\t[ERROR] Fallo al generar enlace. Código: {res.status_code}")
             print(f"\t[DETALLE]: {res.text}")
-            return None  # Devolvemos None si la generación ha fallado para manejarlo en la UI
+            return None # Devolvemos None si la generación ha fallado para manejarlo en la UI
