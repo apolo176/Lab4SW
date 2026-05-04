@@ -7,8 +7,6 @@ los enlaces a los archivos PDF de la asignatura "Sistemas Web".
 
 from tkinter import messagebox
 import requests
-import urllib
-from urllib.parse import unquote
 from bs4 import BeautifulSoup
 import time
 import helper
@@ -101,8 +99,6 @@ class eGela:
         r3 = requests.get(url_redirect_1, headers=self.headers, allow_redirects=False)
         self._update_cookie(r3)
 
-        url_redirect_2 = r3.headers.get('Location') or "https://egela.ehu.eus/my/"
-
         progress = 75
         progress_var.set(progress)
         progress_bar.update()
@@ -110,10 +106,12 @@ class eGela:
 
         # ==========================================
         # PASO 4: GET a la redirección final (Panel Principal)
-        # Objetivo: Obtener el HTML del dashboard si el login fue exitoso.
+        # FIX: Forzamos la petición DIRECTAMENTE al panel principal (/my/).
+        # Esto evita quedarnos atrapados en páginas intermedias si hay redirecciones raras.
         # ==========================================
-        print("\n[AUTH eGela] ##### 4. PETICION GET #####")
-        r4 = requests.get(url_redirect_2, headers=self.headers, allow_redirects=True)
+        print("\n[AUTH eGela] ##### 4. PETICION GET (Dashboard) #####")
+        r4 = requests.get("https://egela.ehu.eus/my/", headers=self.headers, allow_redirects=True)
+        self._update_cookie(r4)
 
         progress = 100
         progress_var.set(progress)
@@ -121,21 +119,29 @@ class eGela:
         time.sleep(1)
         popup.destroy()
 
-        # Validación final: comprobamos si el perfil del usuario aparece en el HTML devuelto
+        # Validación final
         COMPROBACION_DE_LOG_IN = "user/profile.php" in r4.text
 
         if COMPROBACION_DE_LOG_IN:
             print("\t[ÉXITO] Autenticación correcta en eGela.")
-            self._login = 1
 
-            # Buscamos dinámicamente la URL del curso de Sistemas Web en el dashboard
+            # Buscamos dinámicamente la URL del curso de Sistemas Web
             soup_main = BeautifulSoup(r4.text, 'html.parser')
-            for enlace in soup_main.find_all('a', class_='coursename'):
-                if 'Sistemas Web' in enlace.text:
+            # Flexibilizamos la búsqueda para evitar fallos si cambia el HTML de Moodle
+            for enlace in soup_main.find_all('a'):
+                if enlace.text and 'Sistemas Web' in enlace.text and enlace.get(
+                        'href') and 'course/view.php' in enlace.get('href'):
                     self._curso = enlace.get('href')
                     print(f"\tAsignatura encontrada: {self._curso}")
                     break
-            self._root.destroy()
+
+            # Seguro de vida: comprobamos si realmente la encontró
+            if self._curso:
+                self._login = 1
+                self._root.destroy()
+            else:
+                print("\t[ERROR] No se encontró el curso 'Sistemas Web' en tu panel.")
+                messagebox.showerror("Error", "Login correcto, pero no se encontró la asignatura 'Sistemas Web'.")
         else:
             print("\t[ERROR] Fallo de credenciales en Moodle.")
             messagebox.showinfo("Error de inicio de sesión", "Usuario o contraseña incorrectos.")
